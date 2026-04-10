@@ -1,0 +1,33 @@
+# Environment
+.env
+.env.*
+
+# Storage data (large files, user data)
+storage/
+
+# Uploaded temp files
+temp_*.pdf
+temp_*.docx
+
+# Job state
+jobs.json
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

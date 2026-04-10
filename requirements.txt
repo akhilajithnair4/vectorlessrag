@@ -1,0 +1,7 @@
+pdfplumber
+PyMuPDF
+python-dotenv
+openai
+google-generativeai
+anthropic
+requests
