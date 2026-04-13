@@ -150,6 +150,11 @@ print(answer)
 
 **4. Or run as a REST API**
 ```bash
+vectorlessrag
+```
+
+Or manually:
+```bash
 uvicorn api.api:app --host 0.0.0.0 --port 8000
 ```
 
