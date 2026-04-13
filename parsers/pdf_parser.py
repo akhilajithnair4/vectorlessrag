@@ -40,18 +40,21 @@ class PDFParser:
                     return Document(text=text, pages=pages,total_pages=total_pages, total_characters=total_characters)
                 
             elif self.mode == "vision":
+                if self.llm is None:
+                    raise ValueError("Vision mode requires an LLM. Pass llm= when creating PDFParser.")
                 doc = fitz.open(self.file_path)
                 pages = []
-                for page in doc:
-                    image_bytes = page.get_pixmap(dpi=150).tobytes("png")  # parser converts page → image
-                    text = self.llm.call_vision(PARSER_PROMPT, image_bytes)  # LLM reads image
-                    pages.append(text)  
+                for page_num, page in enumerate(doc):
+                    print(f"Vision parsing page {page_num + 1}/{len(doc)}...")
+                    image_bytes = page.get_pixmap(dpi=150).tobytes("png")
+                    text = self.llm.call_vision(PARSER_PROMPT, image_bytes)
+                    pages.append(text if text is not None else "")
                 full_text = "\n\n".join(pages)
                 return Document(text=full_text, pages=pages, total_pages=len(pages), total_characters=len(full_text))
 
         except Exception as e:
             print(f"Error parsing PDF: {e}")
-            return Document(text="")
+            raise
         
 if __name__ == "__main__":
     parser = PDFParser(file_path="sample.pdf",mode="text")

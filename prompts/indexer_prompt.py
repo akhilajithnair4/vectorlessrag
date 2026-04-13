@@ -155,6 +155,7 @@ Output:
 - All node_ids must be strings, not integers
 - page numbers are integers, not strings
 - The returned JSON must be parseable by Python's `json.loads()` with no pre-processing
+- CRITICAL: start_index and end_index must reflect the POSITION of pages in the provided text (e.g. first page = 1, second = 2). Do NOT use any page numbers printed in document headers, footers, or cover pages.
 
 ---
 

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile ,BackgroundTasks
+from fastapi import FastAPI, File, UploadFile, BackgroundTasks, Query, Body
 import json
 from indexer.indexer import Indexer
 from parsers.pdf_parser import PDFParser    
@@ -16,7 +16,18 @@ from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'), override=True)
 
-app = FastAPI()
+app = FastAPI(
+    title="Vectorless RAG API",
+    description=""",
+    This API allows you to perform Retrieval-Augmented Generation without using vector databases.
+
+    You can:
+    - **Upload documents** for indexing.
+    - **Check the status** of an indexing job.
+    - **Query your documents** using natural language.
+    """,
+    version="1.0.0",
+)
 
 JOBS_FILE = "jobs.json"
 
@@ -46,13 +57,13 @@ def get_llm():
 
 def run_indexing(file_path, topic_name, mode, job_id):
     try:
-        parser = PDFParser(file_path=file_path, mode=mode)
+        llm = get_llm()
+        parser = PDFParser(file_path=file_path, mode=mode, llm=llm)
         document = parser.parse()
         jobs = _load_jobs()
         jobs[job_id] = {"status": "parsed"}
         _save_jobs(jobs)
 
-        llm = get_llm()
         indexer = Indexer(llm=llm)
         tree_docs = indexer.create_index(document, indexer_prompt=INDEXER_PROMPT, batch_size=5, max_page=10)
 
@@ -66,8 +77,22 @@ def run_indexing(file_path, topic_name, mode, job_id):
         jobs[job_id] = {"status": "error", "error": str(e)}
         _save_jobs(jobs)
 
-@app.post("/add_document/")
-def add_document(background_tasks: BackgroundTasks, file: UploadFile = File(...), topic_name: str = "default", mode: str = "text"):
+@app.post("/add_document/", summary="Upload a document for indexing")
+def add_document(
+    background_tasks: BackgroundTasks, 
+    file: UploadFile = File(..., description="The PDF document you want to index."), 
+    topic_name: str = Query("default", description="A name to group related documents, like a folder."), 
+    mode: str = Query("text", description="Parsing mode ('text' or 'vision'). Currently only 'text' is fully supported.")
+):
+    """
+    Accepts a PDF file and starts a background task to index it.
+    
+    - **file**: The PDF document to be indexed.
+    - **topic_name**: A string to categorize or group your documents. Think of it like a collection or a folder.
+    - **mode**: The parsing mode. Use 'text' for standard text extraction.
+    
+    Returns a `job_id` which you can use to check the status of the indexing process.
+    """
     # Step 1: Save the uploaded file to disk
     file_location = f"temp_{file.filename}"
     with open(file_location, "wb") as f:
@@ -81,16 +106,35 @@ def add_document(background_tasks: BackgroundTasks, file: UploadFile = File(...)
 
     return {"job_id": job_id, "status": "processing"}
 
-@app.get("/status/{job_id}")
+@app.get("/status/{job_id}", summary="Check the status of an indexing job")
 def get_status(job_id: str):
+    """
+    Retrieves the current status of a background indexing job.
+    
+    - **job_id**: The ID returned from the `/add_document/` endpoint.
+    
+    Possible statuses: `processing`, `parsed`, `indexed`, `error`.
+    If the status is `indexed`, the response will also include the `doc_id`.
+    """
     jobs = _load_jobs()
     if job_id in jobs:
         return {"job_id": job_id, **jobs[job_id]}
     else:
         return {"error": "Job ID not found"}
 
-@app.post("/query/")
-def query(topic_name: str, query: str):
+@app.post("/query/", summary="Query your indexed documents")
+def query(
+    topic_name: str = Query(..., description="The topic you want to search within."), 
+    query: str = Query(..., description="Your question or the information you want to retrieve.")
+):
+    """
+    Searches for an answer to your query within a specific topic.
+    
+    - **topic_name**: The collection of documents you want to query.
+    - **query**: The natural language question you want to ask.
+    
+    The system will use an LLM to reason over the document's structure and retrieve the most relevant information.
+    """
     try:
         llm = get_llm()
         retriever = Retriever()
@@ -100,26 +144,30 @@ def query(topic_name: str, query: str):
         import traceback
         return {"error": str(e), "detail": traceback.format_exc()}
 
-@app.get("/topics/")
+@app.get("/topics/", summary="List all available topics")
 def get_topics():
+    """Returns a list of all unique topic names that contain indexed documents."""
     storage = Storage()
     return {"topics": storage.get_topics()}
 
-@app.get("/llms/")
+@app.get("/llms/", summary="Get LLM provider information")
 def get_supported_llms():
+    """Shows all supported LLM providers and which one is currently configured via environment variables."""
     return {
         "supported_providers": ["openai", "gemini", "claude", "ollama"],
         "current_provider": os.getenv("LLM_PROVIDER", "openai")
     }
 
-@app.get("/topic_name/")
+@app.get("/topic_name/", summary="DEPRECATED: List all available topics")
 def get_topic_name():
+    """DEPRECATED in favor of /topics/. Returns a list of all unique topic names."""
     storage = Storage()
     return {"topics": storage.get_topics()}
 
 
-@app.get("/topics/{topic_name}/documents")
+@app.get("/topics/{topic_name}/documents", summary="List all documents in a topic")
 def get_topic_documents(topic_name: str):
+    """Retrieves the IDs of all documents indexed under a specific topic name."""
     storage = Storage()
     topic_index = storage.get_topic_index(topic_name)
     return {"topic": topic_name, "documents": list(topic_index.keys())}

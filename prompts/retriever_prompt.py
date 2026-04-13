@@ -76,6 +76,14 @@ Reasoning (NOT included in output): "0034" directly lists all service ports. "00
 - Never return an empty array — always return at least one best match
 - The array must be parseable by Python's json.loads() with no pre-processing
 
+## PRIMARY SECTION vs REFERENCE RULE
+
+When a question asks to "fetch", "show", "get", or "give" a specific section (e.g. "income statement", "balance sheet", "cash flow statement"):
+- Select the node whose TITLE IS that section (e.g. "Consolidated Statements of Income")
+- Do NOT select notes, auditor reports, or other sections that merely REFERENCE or DISCUSS that section
+- A note like "Income Taxes" or "Provision for Income Taxes" is NOT the income statement — it is a supporting note
+- The actual primary statement will have it as its main title, not as a footnote
+
 ## DOCUMENT TREE
 
 {tree}
