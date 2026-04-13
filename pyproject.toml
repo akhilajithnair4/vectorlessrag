@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vectorlessrag"
-version = "0.1.0"
+version = "0.1.1"
 description = "Document intelligence API — no vectors, no embeddings, just LLM reasoning over document structure."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -26,6 +26,9 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/akhilajithnair4/vectorlessrag"
 Repository = "https://github.com/akhilajithnair4/vectorlessrag"
+
+[project.scripts]
+vectorlessrag = "api.api:start"
 
 [tool.setuptools.packages.find]
 where = ["."]

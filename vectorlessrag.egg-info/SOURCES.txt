@@ -21,5 +21,6 @@ storage/storage.py
 vectorlessrag.egg-info/PKG-INFO
 vectorlessrag.egg-info/SOURCES.txt
 vectorlessrag.egg-info/dependency_links.txt
+vectorlessrag.egg-info/entry_points.txt
 vectorlessrag.egg-info/requires.txt
 vectorlessrag.egg-info/top_level.txt

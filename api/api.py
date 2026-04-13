@@ -16,6 +16,12 @@ from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'), override=True)
 
+
+def start():
+    import uvicorn
+    uvicorn.run("api.api:app", host="0.0.0.0", port=8000, reload=False)
+
+
 app = FastAPI(
     title="Vectorless RAG API",
     description=""",

@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: vectorlessrag
-Version: 0.1.0
+Version: 0.1.1
 Summary: Document intelligence API — no vectors, no embeddings, just LLM reasoning over document structure.
 License: MIT
 Project-URL: Homepage, https://github.com/akhilajithnair4/vectorlessrag
@@ -131,8 +131,15 @@ from the Cash Flow Statement.
 
 ## Quickstart
 
-**1. Install dependencies**
+**1. Install**
 ```bash
+pip install vectorlessrag
+```
+
+Or from source:
+```bash
+git clone https://github.com/akhilajithnair4/vectorlessrag.git
+cd vectorlessrag
 pip install -r requirements.txt
 ```
 

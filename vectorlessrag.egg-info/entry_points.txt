@@ -1,0 +1,2 @@
+[console_scripts]
+vectorlessrag = api.api:start
