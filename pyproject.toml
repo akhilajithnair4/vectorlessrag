@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vectorlessrag"
+version = "0.1.0"
+description = "Document intelligence API — no vectors, no embeddings, just LLM reasoning over document structure."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+keywords = ["rag", "llm", "document", "pdf", "retrieval"]
+dependencies = [
+    "pdfplumber",
+    "PyMuPDF",
+    "python-dotenv",
+    "openai",
+    "google-generativeai",
+    "anthropic",
+    "requests",
+    "fastapi",
+    "uvicorn",
+    "python-multipart",
+]
+
+[project.urls]
+Homepage = "https://github.com/akhilajithnair4/vectorlessrag"
+Repository = "https://github.com/akhilajithnair4/vectorlessrag"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["vectorlessrag*", "parsers*", "indexer*", "retrievers*", "storage*", "llms*", "prompts*", "core*", "api*"]
