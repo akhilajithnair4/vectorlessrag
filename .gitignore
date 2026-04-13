@@ -28,6 +28,11 @@ env/
 .vscode/
 .idea/
 
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
 # OS
 .DS_Store
 Thumbs.db
