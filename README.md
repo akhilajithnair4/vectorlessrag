@@ -14,9 +14,560 @@
 
 ---
 
-## The problem with RAG today
+## 😤 The problem with RAG today
 
-You split your 200-page annual report into chunks.
+You split your 200-page document into chunks. You embed them. You search by similarity. You get back 5 random paragraphs that *kind of* match the question. Your LLM hallucinates the rest.
+
+This is particularly brutal with structured documents — clinical protocols, legal contracts, technical specs, financial statements — where every row in a table depends on the rows around it. Split them into chunks and you lose the table entirely. The chunk boundary lands right in the middle of a dosage table and suddenly your model is making up numbers.
+
+**Chunking destroys context. Embeddings find similar words, not answers. Vector search doesn't understand documents — it just pattern-matches.**
+
+---
+
+## 💡 How VectorlessRAG works
+
+Instead of chunking, VectorlessRAG reads your document like a human analyst would:
+
+**Step 1 — Parse** 📄  
+Every page is extracted as raw text using `pdfplumber` (digital PDFs) or vision mode using `PyMuPDF` + LLM (scanned/image PDFs). Pages are stored in order. No chunking. No overlap tricks.
+
+**Step 2 — Index** 🌲  
+An LLM reads the document in batches and builds a hierarchical JSON tree — like a smart table of contents where every node has a factual summary and an exact page range.
+
+```
+Clinical Trial Protocol — Study XYZ-001 (pages 1-180)
+├── Study Overview (pages 1-8)
+│   ├── Primary Endpoints (pages 3-4)
+│   └── Eligibility Criteria (pages 5-7)
+├── Treatment Arms (pages 9-45)
+│   ├── Arm A — Dose Escalation Schedule (pages 12-18)
+│   └── Arm B — Control Group Parameters (pages 19-24)
+├── Safety Monitoring (pages 46-90)
+│   ├── Adverse Event Definitions (pages 48-52)
+│   └── Stopping Rules (pages 61-65)
+└── Statistical Analysis Plan (pages 91-120)
+```
+
+Large documents are indexed in parallel batches. Each batch gets its absolute page range so the LLM never confuses footer page numbers (e.g. "Page 70" printed at the bottom) with actual PDF position.
+
+**Step 3 — Retrieve** 🔍  
+At query time the tree is flattened to a compact list of `{node_id, title, pages, summary}`. An LLM reads this list and picks the node IDs most likely to contain the answer. The actual pages for those nodes are fetched with a ±3 page buffer.
+
+**Step 4 — Answer** 🧠  
+The retrieved page text goes to the LLM with your full query. It reasons over real document content — not summaries, not embeddings, not synthetic rephrasing. Full rows in tables. Full sentences. Full context.
+
+---
+
+## ⚔️ VectorlessRAG vs PageIndex
+
+If you've used **PageIndex** before, here's exactly what's different:
+
+| | PageIndex | VectorlessRAG |
+|---|---|---|
+| **Index structure** | Flat list of pages | Hierarchical semantic tree |
+| **How retrieval works** | "Which page numbers might match?" | "Which section of the document logically contains this answer?" |
+| **Understanding tables** | Page-level, table might be split | Tree node points to exact page range of the full table |
+| **Long documents** | Performance degrades past ~50 pages | Batched parallel indexing, tested on 300+ page docs |
+| **Cross-section queries** | Struggles — has to pick one page | Can return nodes from multiple sections and merge |
+| **Context quality** | Raw page dump | Page range with surrounding context buffer |
+| **Derived calculations** | Asks for a page, gets text | Fetches all relevant pages, LLM computes across them |
+| **Persistent chat** | ❌ | ✅ Conversation history per topic |
+| **Knowledge injection** | ❌ | ✅ Approved answers saved back into the index |
+| **Wiki building** | ❌ | ✅ Auto-generated topic wiki from rated Q&A |
+
+The core difference: PageIndex says *"here are some pages, go figure it out"*. VectorlessRAG says *"here is the section that contains what you need, with its exact boundaries, and here's what's around it"*.
+
+---
+
+## 🚀 What it can actually do
+
+Here are real examples across different document types — not just financial reports.
+
+---
+
+### 🧪 Clinical & Pharma Documents
+
+Index a clinical trial protocol (180 pages, complex eligibility criteria, dose tables, stopping rules):
+
+```python
+rag.add_document("study_xyz001_protocol.pdf", topic_name="clinical_xyz", mode="text")
+```
+
+```
+Query: "what are the dose-limiting toxicity criteria for arm A?"
+
+Response: DLT criteria for Arm A (pages 14-16): Grade 3 non-hematologic toxicity
+lasting >7 days, Grade 4 hematologic toxicity, any Grade 3 cardiac event, dose
+delay >14 days due to drug-related adverse events. Primary DLT window is Cycle 1
+(Days 1-21). Exceptions listed for Grade 3 alopecia and Grade 3 nausea controlled
+within 48hrs with antiemetics.
+```
+
+```
+Query: "compare primary endpoints between the two arms"
+
+Response: Arm A primary endpoint — maximum tolerated dose (MTD) determination
+with secondary ORR at 12 weeks. Arm B primary endpoint — PFS at 6 months vs
+placebo. Statistical power calculations: Arm A uses 3+3 dose escalation with
+N=6-18, Arm B uses superiority design with 80% power, α=0.05, N=120 per arm.
+```
+
+```
+Query: "what happens if two patients in the same cohort experience a DLT?"
+
+Response: Per the stopping rules (page 63): if 2/6 patients in any cohort experience
+a DLT, dose escalation halts. The cohort is expanded to 6 patients if initial 3
+show 1 DLT. If 2/6 DLTs are confirmed, that dose level is declared the maximum
+administered dose (MAD) and the previous dose becomes the MTD recommendation.
+```
+
+---
+
+### ⚖️ Legal Contracts
+
+Index a 120-page master service agreement:
+
+```
+Query: "what are our termination rights if the vendor has a data breach?"
+
+Response: Section 14.3 (pages 67-68): Client may terminate for cause with 30 days
+written notice if Vendor (a) fails to notify Client of a Security Incident within
+72 hours of discovery, (b) experiences two or more material breaches of Section 8
+(Data Security) within any 12-month period, or (c) fails to obtain SOC 2 Type II
+certification by the date specified in Exhibit C. Termination for cause triggers
+the Transition Assistance obligations in Section 19.
+```
+
+```
+Query: "summarize all the SLA commitments and penalties"
+
+Response: [Full table extracted — uptime commitments, response time SLAs,
+penalty credits as % of monthly fees, escalation paths, exclusions, and
+the carve-out for force majeure events]
+```
+
+---
+
+### 🏗️ Technical Specifications
+
+Index a product requirements doc or architecture spec:
+
+```
+Query: "what are the latency requirements for the payment processing service?"
+
+Response: Section 4.2.1 (pages 23-24): p50 latency ≤120ms, p95 ≤400ms, p99 ≤800ms
+measured at the API gateway. Timeout threshold is 2000ms after which the transaction
+is voided and the client receives error code PAY-408. Load testing target is 5000
+concurrent sessions with no degradation beyond the p99 threshold.
+```
+
+```
+Query: "list every integration point and its authentication method"
+
+Response: [Full table — 11 services, their endpoints, auth methods (OAuth2, API key,
+mTLS), timeout configs, retry policies, and circuit breaker thresholds]
+```
+
+---
+
+### 📚 Research Papers & Literature Reviews
+
+Index a batch of research papers into one topic, query across all of them:
+
+```python
+for paper in ["study_2022.pdf", "study_2023.pdf", "meta_analysis_2024.pdf"]:
+    rag.add_document(paper, topic_name="nsclc_immunotherapy", mode="text")
+```
+
+```
+Query: "what sample sizes were used across these studies and what were the response rates?"
+
+Response: [Cross-paper comparison table — study name, N, intervention, ORR, median PFS,
+follow-up duration, key confounders noted by each author]
+```
+
+```
+Query: "do any of these papers contradict each other on PD-L1 cutoff thresholds?"
+
+Response: Yes — Smith et al. (2022) uses PD-L1 ≥1% as the inclusion threshold and
+reports ORR of 32%, while the 2024 meta-analysis reanalyses this cohort and argues
+the effect is driven entirely by the PD-L1 ≥50% subgroup (ORR 61%). Chen et al.
+(2023) used ≥50% cutoff from enrollment and reports consistent ORR of 58%, supporting
+the meta-analysis conclusion.
+```
+
+---
+
+### 📋 HR & Policy Documents
+
+Index your entire employee handbook or compliance policy library:
+
+```
+Query: "what is the policy on secondary employment?"
+
+Response: Section 3.7 (pages 44-45): Employees may engage in outside employment
+provided it does not (a) conflict with company interests, (b) use company resources
+or confidential information, or (c) exceed 8 hours per week during core business hours.
+Written disclosure required annually to direct manager and HR. Violation is grounds
+for disciplinary action up to and including termination.
+```
+
+---
+
+## 💬 Persistent Chat
+
+Unlike a one-shot query, the chat mode keeps a conversation going per topic. Ask follow-up questions. Reference things you said earlier. The last 20 messages are passed as sliding window context.
+
+```python
+rag = VectorLessRag(llm=llm)
+
+# Start a conversation
+r1 = rag.chat("what does section 4 cover?", topic_name="clinical_xyz")
+print(r1["response"])
+# → "Section 4 covers the Treatment Arms — Arm A dose escalation and Arm B control..."
+
+r2 = rag.chat("and what are the exclusion criteria for arm A specifically?", topic_name="clinical_xyz")
+print(r2["response"])
+# → "For Arm A, exclusion criteria include prior platinum therapy within 6 months,
+#    ECOG >2, active CNS metastases, and creatinine clearance <30 mL/min..."
+
+r3 = rag.chat("if a patient has CrCl of 35, can they enroll?", topic_name="clinical_xyz")
+print(r3["response"])
+# → "Yes — the cutoff is <30 mL/min. A CrCl of 35 mL/min meets the eligibility
+#    threshold for Arm A and would not be excluded on this criterion alone."
+```
+
+Each response includes a `message_id`. Use it to rate the answer.
+
+---
+
+## 👍 Feedback + Knowledge Injection
+
+Rate any response. A thumbs-up does three things automatically:
+1. Saves the rating to the conversation history
+2. Has the LLM summarize the Q&A into a compact knowledge node
+3. Injects that node into the document's index tree for future retrievals
+4. Rebuilds the topic wiki
+
+```python
+# Rate an answer — if rating=1, knowledge injection + wiki update happen automatically
+result = rag.chat(
+    "what are the stopping rules?",
+    topic_name="clinical_xyz",
+    rating=1  # thumbs up triggers everything
+)
+
+print(result["feedback"]["node_injected"])
+# → "DLT Stopping Rules — Arm A Cohort Escalation"
+
+print(result["feedback"]["wiki_updated"])
+# → "wiki/clinical_xyz.md"
+```
+
+Or rate a past message by its `message_id`:
+
+```python
+rag.feedback(message_id="abc-123", rating=1)
+```
+
+---
+
+## 📖 Wiki Builder
+
+Every thumbs-up builds your knowledge base. The wiki builder takes all your approved Q&A pairs for a topic and asks the LLM to compile them into a structured markdown wiki — overview, key findings, entities, metrics, open questions, contradictions.
+
+It runs automatically on every `rating=1`. But you can also trigger it manually:
+
+```python
+result = rag.build_wiki(topic_name="clinical_xyz")
+# Writes to wiki/clinical_xyz.md
+```
+
+Or hit the API directly:
+
+```bash
+curl -X POST "http://localhost:8000/wiki_builder/?topic_name=clinical_xyz"
+```
+
+The wiki is **cumulative** — each run reads the existing wiki and updates it with new approved pairs. So it gets better the more you use it.
+
+---
+
+## ⚡ Quickstart
+
+**1. Install**
+```bash
+pip install vectorlessrag
+```
+
+Or from source:
+```bash
+git clone https://github.com/yourusername/vectorlessrag.git
+cd vectorlessrag
+pip install -r requirements.txt
+```
+
+**2. Configure your LLM**
+```env
+# .env
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=your-key-here
+```
+
+**3. Use as a Python library**
+```python
+from vectorlessrag import VectorLessRag
+from llms.gemini_llm import GeminiLLM
+
+llm = GeminiLLM(api_key="your-key")
+rag = VectorLessRag(llm=llm)
+
+# Index a document
+doc_id = rag.add_document("protocol.pdf", topic_name="study_xyz", mode="text")
+
+# One-shot query
+answer = rag.query("what are the primary endpoints?", topic_name="study_xyz")
+print(answer)
+
+# Persistent chat with auto feedback + wiki
+result = rag.chat(
+    "what are the dose-limiting toxicity criteria?",
+    topic_name="study_xyz",
+    rating=1  # thumbs up → injects knowledge node + rebuilds wiki
+)
+```
+
+**4. Or run as a REST API**
+```bash
+uvicorn api.api:app --host 0.0.0.0 --port 8000
+```
+
+Interactive docs at `http://localhost:8000/docs`
+
+---
+
+## 🔌 REST API Reference
+
+### POST `/add_document/`
+Upload a PDF and start indexing in the background.
+
+| Field | Type | Description |
+|---|---|---|
+| `file` | File | PDF file to index |
+| `topic_name` | string | Collection to add the document to |
+| `mode` | string | `text` (default) or `vision` for scanned PDFs |
+
+```json
+{ "job_id": "0248547e-a69e-46d6-987f-8612051957f6", "status": "processing" }
+```
+
+---
+
+### GET `/status/{job_id}`
+Check indexing progress. Statuses: `processing` → `parsed` → `indexed` | `error`
+
+---
+
+### POST `/query/`
+One-shot question against a topic.
+
+| Param | Description |
+|---|---|
+| `topic_name` | Topic to search within |
+| `query` | Natural language question |
+
+---
+
+### POST `/chat/`
+Persistent conversation with sliding window history.
+
+| Param | Description |
+|---|---|
+| `topic_name` | Topic to chat with |
+| `query` | Your message |
+| `rating` | `0` or `1` — optional, triggers feedback + wiki update in the same call |
+| `comment` | Optional text comment alongside the rating |
+
+---
+
+### POST `/feedback/`
+Rate a past response by `message_id`.
+
+| Param | Description |
+|---|---|
+| `message_id` | ID returned from `/chat/` |
+| `rating` | `0` (bad) or `1` (good) |
+| `comment` | Optional comment |
+
+---
+
+### POST `/wiki_builder/`
+Build or update a topic wiki from all thumbs-up Q&A pairs.
+
+| Param | Description |
+|---|---|
+| `topic_name` | The topic to build a wiki for |
+
+---
+
+### GET `/chats/{topic_name}`
+Get the full conversation history for a topic.
+
+### GET `/topics/`
+List all topics with indexed documents.
+
+### GET `/topics/{topic_name}/documents`
+List all document IDs under a topic.
+
+### GET `/llms/`
+Show current LLM provider configuration.
+
+---
+
+## 📦 Multi-document topics
+
+Add multiple documents to the same topic. The retriever queries every document in parallel and merges before synthesis.
+
+```bash
+# Index multiple documents under one topic
+curl -X POST "http://localhost:8000/add_document/" \
+  -F "file=@protocol_v1.pdf" -F "topic_name=study_xyz"
+
+curl -X POST "http://localhost:8000/add_document/" \
+  -F "file=@protocol_amendment_1.pdf" -F "topic_name=study_xyz"
+
+curl -X POST "http://localhost:8000/add_document/" \
+  -F "file=@investigators_brochure.pdf" -F "topic_name=study_xyz"
+
+# Query across all three at once
+curl -X POST "http://localhost:8000/query/?topic_name=study_xyz&query=have+the+stopping+rules+changed+between+protocol+versions"
+```
+
+---
+
+## 🤖 Supported LLMs
+
+| Provider | `LLM_PROVIDER` | Key variable |
+|---|---|---|
+| OpenAI (GPT-4o) | `openai` | `OPENAI_API_KEY` |
+| Google Gemini | `gemini` | `GEMINI_API_KEY` |
+| Anthropic Claude | `claude` | `ANTHROPIC_API_KEY` |
+| Ollama (local) | `ollama` | — (no key needed) |
+
+Vision mode requires a multimodal model. Gemini 1.5 Pro and GPT-4o both work well for scanned PDFs.
+
+---
+
+## 🔬 Parsing modes
+
+| Mode | How it works | When to use |
+|---|---|---|
+| `text` | `pdfplumber` extracts text layer | Digital/native PDFs |
+| `vision` | `PyMuPDF` renders each page to image, LLM reads it | Scanned PDFs, image-heavy docs |
+
+```python
+rag.add_document("native_report.pdf", topic_name="docs", mode="text")
+rag.add_document("scanned_contract.pdf", topic_name="legal", mode="vision")
+```
+
+---
+
+## 🗂️ Project structure
+
+```
+vectorlessindex/
+├── vectorlessrag.py          # Main Python library entry point
+├── api/
+│   └── api.py                # FastAPI app — all endpoints
+├── parsers/
+│   └── pdf_parser.py         # Text + vision PDF parsing
+├── indexer/
+│   └── indexer.py            # Builds hierarchical JSON tree index
+├── retrievers/
+│   └── retriever.py          # Flattens tree, selects nodes, fetches pages
+├── storage/
+│   └── storage.py            # File-based JSON storage per topic
+├── chat/
+│   └── chat.py               # Persistent chat, feedback, knowledge injection
+├── wiki/
+│   └── wiki_builder.py       # Compiles approved Q&As into a topic wiki
+├── llms/
+│   ├── base.py               # BaseLLM abstract class
+│   ├── gemini_llm.py
+│   ├── openai_llm.py
+│   ├── claude_llm.py
+│   └── ollama_llm.py
+├── prompts/
+│   ├── indexer_prompt.py     # Instructs LLM to build the tree
+│   ├── retriever_prompt.py   # Instructs LLM to select relevant nodes
+│   └── wiki_builder_prompt.py # Instructs LLM to compile a wiki
+└── core/
+    └── config.py             # Shared constants (CHAT_HISTORY path, etc.)
+```
+
+---
+
+## 🌲 How the tree index works
+
+Each document is stored as a nested JSON tree. Every node has:
+
+```json
+{
+  "node_id": "0048",
+  "title": "Dose-Limiting Toxicity Criteria — Arm A",
+  "start_index": 13,
+  "end_index": 16,
+  "summary": "DLT defined as Grade 3 non-hematologic >7 days, Grade 4 hematologic, Grade 3 cardiac, or dose delay >14 days. Evaluation window is Cycle 1 Days 1-21. Exceptions for alopecia and brief nausea.",
+  "sub_nodes": []
+}
+```
+
+Parent nodes use `prefix_summary` (broad overview of a section). Leaf nodes use `summary` (specific facts, numbers, thresholds). The retriever only sends leaf summaries to the selection LLM — keeps the prompt small and focused.
+
+---
+
+## 🐳 Docker
+
+```bash
+docker build -t vectorlessrag .
+docker run -p 8000:8000 --env-file .env vectorlessrag
+```
+
+---
+
+## ➕ Adding a new LLM
+
+Create a file in `llms/` that extends `BaseLLM`:
+
+```python
+from llms.base import BaseLLM
+
+class MyLLM(BaseLLM):
+    def call(self, prompt: str) -> str:
+        # your LLM call here
+        return response_text
+
+    def call_vision(self, prompt: str, image_bytes: bytes) -> str:
+        # only needed for vision mode
+        return response_text
+```
+
+No other changes needed — `core/config.py` picks it up from `LLM_PROVIDER`.
+
+---
+
+## 🤝 Contributing
+
+Open source. PRs welcome.
+
+- Found a bug? Open an issue.
+- New LLM provider? Add a file to `llms/`.
+- New parser? Add a file to `parsers/`.
+
+---
+
+> *Built because documents deserve better than chunking.*
+
 You embed them.
 You search by similarity.
 You get back 5 random paragraphs that *kinda* match the question.

@@ -12,6 +12,12 @@ temp_*.docx
 # Job state
 jobs.json
 
+# Chat history
+chats.json
+
+# Generated wikis
+wiki/*.md
+
 # Python cache
 __pycache__/
 *.pyc
