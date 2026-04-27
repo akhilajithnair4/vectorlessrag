@@ -81,9 +81,7 @@ Where they actually diverge:
 | **Multi-doc topics** | ❌ | ✅ Multiple docs per topic, queried together |
 | **REST API** | External cloud API | ✅ Self-hosted FastAPI, runs locally |
 
-**The honest summary:**
 
-PageIndex is the more mature system — battle-tested, benchmarked, has a cloud offering, and an agentic pipeline. If you just need the best possible retrieval accuracy out of the box, PageIndex is the right call.
 
 VectorlessRAG adds the **knowledge compounding loop** on top of the same retrieval idea. Every conversation you have with your documents gets better over time — good answers get injected back as knowledge nodes, your approved Q&As build into a wiki, and future retrievals benefit from that accumulated context. It's built for teams that are going to live inside a document set for months, not just run one-off queries.
 
