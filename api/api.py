@@ -7,12 +7,9 @@ from retrievers.retriever import Retriever
 from storage.storage import Storage
 import uuid
 import os
-from llms.openai_llm import OpenAILLM
-from llms.gemini_llm import GeminiLLM
-from llms.claude_llm import ClaudeLLM
-from llms.ollama_llm import OllamaLLM
 from chat.chat import Chat
 from wiki.wiki_builder import WikiBuilder
+from core.config import get_llm
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'), override=True)
@@ -41,20 +38,6 @@ def _load_jobs():
 def _save_jobs(jobs):
     with open(JOBS_FILE, "w") as f:
         json.dump(jobs, f)
-
-def get_llm():
-    provider = os.getenv("LLM_PROVIDER", "openai")
-    if provider == "openai":
-        return OpenAILLM(api_key=os.getenv("OPENAI_API_KEY"))
-    elif provider == "gemini":
-        return GeminiLLM(api_key=os.getenv("GEMINI_API_KEY"), model_name=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
-    elif provider == "claude":
-        return ClaudeLLM(api_key=os.getenv("CLAUDE_API_KEY"))
-    elif provider == "ollama":
-        return OllamaLLM(model=os.getenv("OLLAMA_MODEL", "llama3"))
-    else:        
-        raise ValueError(f"Unsupported LLM provider: {provider}")
-
 
 def run_indexing(file_path, topic_name, mode, job_id):
     try:
@@ -181,26 +164,18 @@ def get_topic_documents(topic_name: str):
 @app.post("/chat/", summary="Chat with your documents (for persistent conversations)")
 def chat(
     topic_name: str = Query(..., description="The topic you want to search within."),
-    query: str = Query(..., description="Your question or the information you want to retrieve."),
-    rating: int = Query(None, ge=0, le=1, description="Optional. Provide 0 or 1 immediately to auto-trigger feedback and wiki update."),
-    comment: str = Query(None, description="Optional comment alongside the rating.")
+    query: str = Query(..., description="Your question or the information you want to retrieve.")
 ):
     """
-    Chat with your indexed documents. Optionally pass a `rating` (0 or 1) in the same call to
-    automatically record feedback and — if rating=1 — rebuild the topic wiki immediately.
-    
+    Chat with your indexed documents with persistent conversation history.
+    Returns a response and a message_id. Use POST /feedback/ with the message_id to rate the answer.
+
     - **topic_name**: The collection of documents you want to query.
     - **query**: Your message or question.
-    - **rating**: (optional) 0 = bad, 1 = good. If provided, feedback and wiki update happen automatically.
     """
     try:
         llm = get_llm()
         result = Chat().send(query=query, topic_name=topic_name, llm=llm)
-        if rating is not None:
-            feedback_result = Chat().feedback(
-                message_id=result["message_id"], rating=rating, llm=llm, comment=comment
-            )
-            result["feedback"] = feedback_result
         history = Chat().get_history(topic_name)
         return {**result, "conversation_history": history}
     except Exception as e:

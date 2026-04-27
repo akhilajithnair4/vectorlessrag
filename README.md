@@ -60,24 +60,35 @@ The retrieved page text goes to the LLM with your full query. It reasons over re
 
 ## ⚔️ VectorlessRAG vs PageIndex
 
-If you've used **PageIndex** before, here's exactly what's different:
+Let's be straight about this — **PageIndex and VectorlessRAG share the same foundational idea**: hierarchical tree index, no vectors, no chunking, LLM reasoning for retrieval. PageIndex is where that idea was published first and benchmarked (98.7% on FinanceBench). If you're evaluating both, you should know that.
+
+Where they actually diverge:
 
 | | PageIndex | VectorlessRAG |
 |---|---|---|
-| **Index structure** | Flat list of pages | Hierarchical semantic tree |
-| **How retrieval works** | "Which page numbers might match?" | "Which section of the document logically contains this answer?" |
-| **Understanding tables** | Page-level, table might be split | Tree node points to exact page range of the full table |
-| **Long documents** | Performance degrades past ~50 pages | Batched parallel indexing, tested on 300+ page docs |
-| **Cross-section queries** | Struggles — has to pick one page | Can return nodes from multiple sections and merge |
-| **Context quality** | Raw page dump | Page range with surrounding context buffer |
-| **Derived calculations** | Asks for a page, gets text | Fetches all relevant pages, LLM computes across them |
-| **Persistent chat** | ❌ | ✅ Conversation history per topic |
-| **Knowledge injection** | ❌ | ✅ Approved answers saved back into the index |
-| **Wiki building** | ❌ | ✅ Auto-generated topic wiki from rated Q&A |
+| **Core idea** | Hierarchical tree index, LLM reasoning retrieval | Same |
+| **Vectorless** | ✅ | ✅ |
+| **No chunking** | ✅ | ✅ |
+| **Multi-LLM support** | Via LiteLLM (drop-in for any provider) | Native classes for OpenAI / Gemini / Claude / Ollama |
+| **Vision mode** | ✅ vision-based RAG over page images | ✅ PyMuPDF renders to image, LLM reads it |
+| **Agentic RAG** | ✅ OpenAI Agents SDK integration | ❌ |
+| **Cloud platform** | ✅ Chat UI + MCP + API service | ❌ self-host only |
+| **Benchmarks** | 98.7% FinanceBench (published) | Not benchmarked |
+| **Persistent chat** | ❌ | ✅ Sliding window history per topic |
+| **Feedback loop** | ❌ | ✅ 0/1 rating on any response |
+| **Knowledge injection** | ❌ | ✅ Thumbs-up → LLM summarizes Q&A → node injected into index |
+| **Wiki builder** | ❌ | ✅ Approved Q&As compiled into a living markdown wiki |
+| **Multi-doc topics** | ❌ | ✅ Multiple docs per topic, queried together |
+| **REST API** | External cloud API | ✅ Self-hosted FastAPI, runs locally |
 
-The core difference: PageIndex says *"here are some pages, go figure it out"*. VectorlessRAG says *"here is the section that contains what you need, with its exact boundaries, and here's what's around it"*.
+**The honest summary:**
+
+PageIndex is the more mature system — battle-tested, benchmarked, has a cloud offering, and an agentic pipeline. If you just need the best possible retrieval accuracy out of the box, PageIndex is the right call.
+
+VectorlessRAG adds the **knowledge compounding loop** on top of the same retrieval idea. Every conversation you have with your documents gets better over time — good answers get injected back as knowledge nodes, your approved Q&As build into a wiki, and future retrievals benefit from that accumulated context. It's built for teams that are going to live inside a document set for months, not just run one-off queries.
 
 ---
+
 
 ## 🚀 What it can actually do
 
@@ -243,31 +254,25 @@ Each response includes a `message_id`. Use it to rate the answer.
 
 ## 👍 Feedback + Knowledge Injection
 
-Rate any response. A thumbs-up does three things automatically:
+Rate any response after reading it. A thumbs-up does three things automatically:
 1. Saves the rating to the conversation history
 2. Has the LLM summarize the Q&A into a compact knowledge node
 3. Injects that node into the document's index tree for future retrievals
 4. Rebuilds the topic wiki
 
 ```python
-# Rate an answer — if rating=1, knowledge injection + wiki update happen automatically
-result = rag.chat(
-    "what are the stopping rules?",
-    topic_name="clinical_xyz",
-    rating=1  # thumbs up triggers everything
-)
+# Step 1 — ask
+result = rag.chat("what are the stopping rules?", topic_name="clinical_xyz")
+print(result["response"])
+
+# Step 2 — read the answer, then rate
+rag.feedback(result["message_id"], rating=1)
 
 print(result["feedback"]["node_injected"])
 # → "DLT Stopping Rules — Arm A Cohort Escalation"
 
 print(result["feedback"]["wiki_updated"])
 # → "wiki/clinical_xyz.md"
-```
-
-Or rate a past message by its `message_id`:
-
-```python
-rag.feedback(message_id="abc-123", rating=1)
 ```
 
 ---
@@ -329,12 +334,13 @@ doc_id = rag.add_document("protocol.pdf", topic_name="study_xyz", mode="text")
 answer = rag.query("what are the primary endpoints?", topic_name="study_xyz")
 print(answer)
 
-# Persistent chat with auto feedback + wiki
-result = rag.chat(
-    "what are the dose-limiting toxicity criteria?",
-    topic_name="study_xyz",
-    rating=1  # thumbs up → injects knowledge node + rebuilds wiki
-)
+# Persistent chat — ask first, read the answer, then rate
+result = rag.chat("what are the dose-limiting toxicity criteria?", topic_name="study_xyz")
+print(result["response"])
+
+# After reading the answer, decide if it was good
+rag.feedback(result["message_id"], rating=1)  # thumbs up → injects knowledge node + rebuilds wiki
+rag.feedback(result["message_id"], rating=0)  # thumbs down → just records it, no injection
 ```
 
 **4. Or run as a REST API**

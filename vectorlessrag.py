@@ -31,14 +31,8 @@ class VectorLessRag:
         final_response, _ = retriever.retrieve(query=query, topic_name=topic_name, llm=self.llm)
         return final_response
 
-    def chat(self, query: str, topic_name: str, rating: int = None, comment: str = None):
-        result = Chat().send(query=query, topic_name=topic_name, llm=self.llm)
-        if rating is not None:
-            feedback_result = Chat().feedback(
-                message_id=result["message_id"], rating=rating, llm=self.llm, comment=comment
-            )
-            result["feedback"] = feedback_result
-        return result
+    def chat(self, query: str, topic_name: str):
+        return Chat().send(query=query, topic_name=topic_name, llm=self.llm)
 
     def feedback(self, message_id: str, rating: int, comment: str = None):
         return Chat().feedback(message_id=message_id, rating=rating, llm=self.llm, comment=comment)
