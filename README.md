@@ -74,10 +74,6 @@ Both systems use the same core approach — hierarchical tree index, no vectors,
 | **Multi-doc topics** | ❌ | ✅ Multiple docs per topic, queried together |
 | **REST API** | External cloud API | ✅ Self-hosted FastAPI, runs locally |
 
-**The honest summary:**
-
-PageIndex is the more mature system — it's been around longer, has a published benchmark, a cloud offering, and an agentic pipeline. VectorlessRAG hasn't been formally benchmarked, so there's no claim here about which retrieves more accurately. The core retrieval mechanism is the same idea.
-
 What VectorlessRAG adds is the **knowledge compounding loop**. Every conversation you have with your documents gets better over time — good answers get injected back as knowledge nodes, your approved Q&As build into a wiki, and future retrievals benefit from that accumulated context. It's built for teams that are going to live inside a document set for months, not just run one-off queries.
 
 ---
