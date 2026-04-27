@@ -34,6 +34,28 @@ class VectorLessRag:
     def chat(self, query: str, topic_name: str):
         return Chat().send(query=query, topic_name=topic_name, llm=self.llm)
 
+    def chat_and_rate(self, query: str, topic_name: str):
+        """Ask a question, print the answer, prompt the user to rate it, then call feedback automatically."""
+        result = Chat().send(query=query, topic_name=topic_name, llm=self.llm)
+        print(f"\n{result['response']}\n")
+        while True:
+            raw = input("Rate this answer (1 = good, 0 = bad, s = skip): ").strip().lower()
+            if raw == "1":
+                feedback = self.feedback(result["message_id"], rating=1)
+                print(f"✅ Saved: '{feedback.get('node_injected', '')}'")
+                if feedback.get("wiki_updated"):
+                    print(f"📖 Wiki updated: {feedback['wiki_updated']}")
+                break
+            elif raw == "0":
+                self.feedback(result["message_id"], rating=0)
+                print("📝 Noted.")
+                break
+            elif raw == "s":
+                break
+            else:
+                print("Please enter 1, 0, or s.")
+        return result
+
     def feedback(self, message_id: str, rating: int, comment: str = None):
         return Chat().feedback(message_id=message_id, rating=rating, llm=self.llm, comment=comment)
 

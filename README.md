@@ -249,19 +249,27 @@ Rate any response after reading it. A thumbs-up does three things automatically:
 3. Injects that node into the document's index tree for future retrievals
 4. Rebuilds the topic wiki
 
+The simplest way — `chat_and_rate()` asks for the rating immediately after showing the answer:
+
+```python
+# System prints the answer, then immediately asks "Rate this answer (1 / 0 / s):"
+rag.chat_and_rate("what are the stopping rules?", topic_name="clinical_xyz")
+# → prints answer
+# → Rate this answer (1 = good, 0 = bad, s = skip):
+# Type 1 → ✅ Saved: 'DLT Stopping Rules — Arm A'
+#           📖 Wiki updated: wiki/clinical_xyz.md
+```
+
+Or manually if you need more control:
+
 ```python
 # Step 1 — ask
 result = rag.chat("what are the stopping rules?", topic_name="clinical_xyz")
 print(result["response"])
 
-# Step 2 — read the answer, then rate
-rag.feedback(result["message_id"], rating=1)
-
-print(result["feedback"]["node_injected"])
-# → "DLT Stopping Rules — Arm A Cohort Escalation"
-
-print(result["feedback"]["wiki_updated"])
-# → "wiki/clinical_xyz.md"
+# Step 2 — after reading, rate it
+rag.feedback(result["message_id"], rating=1)  # good → injects node + rebuilds wiki
+rag.feedback(result["message_id"], rating=0)  # bad  → just records it
 ```
 
 ---
@@ -323,13 +331,16 @@ doc_id = rag.add_document("protocol.pdf", topic_name="study_xyz", mode="text")
 answer = rag.query("what are the primary endpoints?", topic_name="study_xyz")
 print(answer)
 
-# Persistent chat — ask first, read the answer, then rate
+# Persistent chat — system prints answer then immediately asks for rating
+rag.chat_and_rate("what are the dose-limiting toxicity criteria?", topic_name="study_xyz")
+# → prints answer
+# → Rate this answer (1 = good, 0 = bad, s = skip):
+# Type 1 → node injected + wiki rebuilt automatically
+
+# Or manually if you need more control
 result = rag.chat("what are the dose-limiting toxicity criteria?", topic_name="study_xyz")
 print(result["response"])
-
-# After reading the answer, decide if it was good
-rag.feedback(result["message_id"], rating=1)  # thumbs up → injects knowledge node + rebuilds wiki
-rag.feedback(result["message_id"], rating=0)  # thumbs down → just records it, no injection
+rag.feedback(result["message_id"], rating=1)
 ```
 
 **4. Or run as a REST API**
