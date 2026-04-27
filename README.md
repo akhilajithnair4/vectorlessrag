@@ -60,20 +60,13 @@ The retrieved page text goes to the LLM with your full query. It reasons over re
 
 ## ⚔️ VectorlessRAG vs PageIndex
 
-Let's be straight about this — **PageIndex and VectorlessRAG share the same foundational idea**: hierarchical tree index, no vectors, no chunking, LLM reasoning for retrieval. PageIndex is where that idea was published first and benchmarked (98.7% on FinanceBench). If you're evaluating both, you should know that.
-
-Where they actually diverge:
+Both systems use the same core approach — hierarchical tree index, no vectors, no chunking, LLM reasoning for retrieval. Here's where they diverge:
 
 | | PageIndex | VectorlessRAG |
 |---|---|---|
 | **Core idea** | Hierarchical tree index, LLM reasoning retrieval | Same |
 | **Vectorless** | ✅ | ✅ |
 | **No chunking** | ✅ | ✅ |
-| **Multi-LLM support** | Via LiteLLM (drop-in for any provider) | Native classes for OpenAI / Gemini / Claude / Ollama |
-| **Vision mode** | ✅ vision-based RAG over page images | ✅ PyMuPDF renders to image, LLM reads it |
-| **Agentic RAG** | ✅ OpenAI Agents SDK integration | ❌ |
-| **Cloud platform** | ✅ Chat UI + MCP + API service | ❌ self-host only |
-| **Benchmarks** | 98.7% FinanceBench (published) | Not benchmarked |
 | **Persistent chat** | ❌ | ✅ Sliding window history per topic |
 | **Feedback loop** | ❌ | ✅ 0/1 rating on any response |
 | **Knowledge injection** | ❌ | ✅ Thumbs-up → LLM summarizes Q&A → node injected into index |
@@ -83,9 +76,9 @@ Where they actually diverge:
 
 **The honest summary:**
 
-PageIndex is the more mature system — battle-tested, benchmarked, has a cloud offering, and an agentic pipeline. If you just need the best possible retrieval accuracy out of the box, PageIndex is the right call.
+PageIndex is the more mature system — it's been around longer, has a published benchmark, a cloud offering, and an agentic pipeline. VectorlessRAG hasn't been formally benchmarked, so there's no claim here about which retrieves more accurately. The core retrieval mechanism is the same idea.
 
-VectorlessRAG adds the **knowledge compounding loop** on top of the same retrieval idea. Every conversation you have with your documents gets better over time — good answers get injected back as knowledge nodes, your approved Q&As build into a wiki, and future retrievals benefit from that accumulated context. It's built for teams that are going to live inside a document set for months, not just run one-off queries.
+What VectorlessRAG adds is the **knowledge compounding loop**. Every conversation you have with your documents gets better over time — good answers get injected back as knowledge nodes, your approved Q&As build into a wiki, and future retrievals benefit from that accumulated context. It's built for teams that are going to live inside a document set for months, not just run one-off queries.
 
 ---
 
